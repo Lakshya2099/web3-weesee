@@ -30,7 +30,6 @@ contract PlayGame is Ownable, ReentrancyGuard {
     event Settled(bytes32 indexed matchId, address indexed winner, uint256 totalPayout);
     event Refunded(bytes32 indexed matchId, address indexed p1, address indexed p2, uint256 refundAmount);
     
-    // Fixed constructor - removed msg.sender argument
     constructor(address _gameToken, address _operator) {
         require(_gameToken != address(0), "Invalid GameToken address");
         require(_operator != address(0), "Invalid operator address");
@@ -44,7 +43,8 @@ contract PlayGame is Ownable, ReentrancyGuard {
         operator = _operator;
     }
     
-    function createMatch(bytes32 matchId, address p1, address p2, uint256 stake) external onlyOwner {
+    // FIXED: Remove onlyOwner to allow public match creation
+    function createMatch(bytes32 matchId, address p1, address p2, uint256 stake) external {
         require(matches[matchId].p1 == address(0), "Match already exists");
         require(p1 != address(0) && p2 != address(0), "Invalid player addresses");
         require(p1 != p2, "Players must be different");
@@ -64,6 +64,7 @@ contract PlayGame is Ownable, ReentrancyGuard {
         emit MatchCreated(matchId, p1, p2, stake);
     }
     
+    // Rest of your contract remains the same...
     function stake(bytes32 matchId) external nonReentrant {
         Match storage matchData = matches[matchId];
         require(matchData.status == MatchStatus.CREATED, "Invalid match status");

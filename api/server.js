@@ -152,77 +152,85 @@ app.get('/purchase', async (req, res) => {
 // EMERGENCY FIX: Simple staking endpoint
 app.post('/stake', async (req, res) => {
     try {
-        const { matchId } = req.body;
-        if (!matchId) {
-            return res.status(400).json({ error: 'matchId is required' });
+        const { matchId, playerAddress, stakeAmount, gasLimit } = req.body;
+        
+        console.log('Stake request:', { matchId, playerAddress, stakeAmount });
+        
+        // Use manual gas limit if provided, otherwise estimate
+        const txOptions = {};
+        if (gasLimit) {
+            txOptions.gasLimit = gasLimit;
         }
         
-        console.log(`Processing stake for match: ${matchId}`);
-        
-        // Convert matchId to bytes32
         const matchIdBytes = ethers.utils.keccak256(ethers.utils.toUtf8Bytes(matchId));
         
-        // Use fixed stake amount (10 GT as used in match creation)
-        const stakeAmount = ethers.utils.parseEther("10");
+        // Call stake function with manual gas limit
+        const tx = await playGame.stake(matchIdBytes, txOptions);
+        await tx.wait();
         
-        // Approve GT tokens for PlayGame contract
-        console.log('Step 1: Approving GT...');
-        const approveTx = await gameToken.approve(addresses.PLAY_GAME, stakeAmount);
-        await approveTx.wait();
-        
-        // Wait for approval
-        await new Promise(resolve => setTimeout(resolve, 2000));
-        
-        // Then stake
-        console.log('Step 2: Staking match...');
-        const tx = await playGame.stake(matchIdBytes);
-        const receipt = await tx.wait();
-        
-        console.log('Staking successful:', receipt.transactionHash);
-        
-        res.json({
-            success: true,
-            txHash: receipt.transactionHash,
-            message: `Successfully staked in match ${matchId}`
+        res.json({ 
+            success: true, 
+            message: 'Tokens staked successfully',
+            txHash: tx.hash 
         });
+        
     } catch (error) {
-        console.error('Staking error:', error);
-        res.status(500).json({ 
-            success: false, 
-            error: error.message 
-        });
+        console.error('Staking API Error:', error);
+        res.json({ success: false, error: error.message });
     }
 });
 
+
 // Match creation endpoint
+// In your API server (api/server.js), check this endpoint:
 app.post('/match/start', async (req, res) => {
     try {
         const { matchId, p1, p2, stake } = req.body;
-        if (!matchId || !p1 || !p2 || !stake) {
-            return res.status(400).json({ error: 'All fields are required' });
+        
+        console.log('API received:', { matchId, p1, p2, stake });
+        
+        // Make sure addresses are different
+        if (p1.toLowerCase() === p2.toLowerCase()) {
+            return res.json({ success: false, error: 'Players must be different (API check)' });
         }
-
-        console.log(`Creating match: ${matchId}`);
         
+        // Use the correct function name from your contract
         const matchIdBytes = ethers.utils.keccak256(ethers.utils.toUtf8Bytes(matchId));
-        const stakeAmount = ethers.utils.parseEther(stake);
         
-        const tx = await playGame.createMatch(matchIdBytes, p1, p2, stakeAmount);
-        const receipt = await tx.wait();
-
-        res.json({
-            success: true,
-            txHash: receipt.transactionHash,
-            message: `Match ${matchId} created successfully`
+        // Try different possible function names:
+        let tx;
+        try {
+            // Option 1: Try createMatch
+            tx = await playGame.createMatch(matchIdBytes, p1, p2, ethers.utils.parseEther(stake.toString()));
+        } catch (error1) {
+            try {
+                // Option 2: Try initMatch  
+                tx = await playGame.initMatch(matchIdBytes, p1, p2, ethers.utils.parseEther(stake.toString()));
+            } catch (error2) {
+                try {
+                    // Option 3: Try newMatch
+                    tx = await playGame.newMatch(matchIdBytes, p1, p2, ethers.utils.parseEther(stake.toString()));
+                } catch (error3) {
+                    console.error('All function attempts failed:', { error1: error1.message, error2: error2.message, error3: error3.message });
+                    return res.json({ success: false, error: 'Function not found in contract' });
+                }
+            }
+        }
+        
+        await tx.wait();
+        
+        res.json({ 
+            success: true, 
+            message: 'Match created successfully',
+            txHash: tx.hash 
         });
+        
     } catch (error) {
-        console.error('Match creation error:', error);
-        res.status(500).json({ 
-            success: false, 
-            error: error.message 
-        });
+        console.error('API Error:', error);
+        res.json({ success: false, error: error.message });
     }
 });
+
 
 // Match result submission endpoint
 app.post('/match/result', async (req, res) => {
